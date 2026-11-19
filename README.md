@@ -1,59 +1,56 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Supabase migration package
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Converted from the supplied MariaDB/phpMyAdmin dump.
 
-## About Laravel
+## Included
+- `supabase/migrations/20261119000000_initial_schema.sql`
+  - Creates all 40 tables.
+  - Converts MySQL data types to PostgreSQL-compatible types.
+  - Creates 40 primary keys, 74 indexes (including unique indexes), and 26 foreign keys.
+  - Enables Row Level Security (RLS) on every table.
+  - Does not include the original INSERT statements or private user/session data.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Apply the schema
+1. Open your Supabase project.
+2. Open **SQL Editor**.
+3. Open `20261119000000_initial_schema.sql` from this package.
+4. Paste its contents into a new SQL query and run it.
+5. If it fails, stop and share the exact first error. Do not repeatedly run a partially applied script.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Important data migration note
+This is a schema migration, not a complete data migration. Your original dump contains application records and sensitive material such as password hashes, OTPs, session payloads, and reset tokens. Do not commit the original dump or customer data to a public GitHub repository.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+For data migration, restore the original dump into a temporary MariaDB/MySQL instance and migrate the required application tables into Supabase PostgreSQL using a migration tool such as pgloader or a controlled ETL process. Migrate only the tables and records the application still needs. Do not migrate stale sessions, OTPs, password-reset tokens, cache, or queue records.
 
-## Learning Laravel
+## Authentication warning
+The legacy `public.users` table is not the same as Supabase `auth.users`. This migration keeps the old table and its bigint foreign keys intact for compatibility. Do not expose `public.users`, password hashes, `sessions`, `email_otps`, or `password_reset_tokens` through the client API. If you move authentication to Supabase Auth, plan a separate account migration and map the legacy bigint user IDs to `auth.users.id` UUIDs.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+## RLS warning
+RLS is enabled on all 40 tables, and no permissive policies are added. This is intentionally fail-closed. Browser/mobile clients will not be able to read or write rows until you create policies for the exact customer/vendor/admin workflows. A trusted server using the Supabase service-role key can perform privileged operations; never put that key in frontend code.
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Supabase Storage vs GitHub
+Use GitHub as the source-control location for this migration, application code, and documentation. Use Supabase Storage for actual uploaded media:
+- `product-media` (public read): product photos, brand logos, banners and public site images.
+- `private-uploads` (private): customer documents, contact-form attachments and private files.
 
-## Laravel Sponsors
+The SQL dump only contains old file paths such as `uploads/products/...`; it does not contain the actual image bytes. You must upload the original files from your old application's `uploads/` directory to Supabase Storage and update the corresponding database path fields to Storage object paths (or URLs). A GitHub repository is not a suitable customer-upload storage service.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## After importing rows with explicit IDs
+PostgreSQL identity sequences do not automatically advance when explicit IDs are inserted. For each identity column, reset its sequence to the current maximum ID before creating new records. Example for one table:
 
-### Premium Partners
+```sql
+SELECT setval(
+  pg_get_serial_sequence('public.products', 'id'),
+  COALESCE((SELECT MAX(id) FROM public.products), 1),
+  EXISTS (SELECT 1 FROM public.products)
+);
+```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+Repeat for each identity-backed table that received explicit IDs.
 
-## Contributing
-
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Review before production
+- Review RLS policies and Data API grants.
+- Move authentication to Supabase Auth only as a separate planned migration.
+- Confirm all file paths have corresponding Storage objects.
+- Test inserts, updates, deletes, checkout, order creation, vendor workflows and admin operations.
+- Keep the original SQL dump and a database backup in a secure private location.
